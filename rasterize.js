@@ -15,8 +15,15 @@ var triangleBuffer; // this contains indices into vertexBuffer in triples
 var triBufferSize = 0; // the number of indices in the triangle buffer
 var vertexPositionAttrib; // where to put position for vertex shader
 
+var uniformMatries = {};
 
 // ASSIGNMENT HELPER FUNCTIONS
+
+// update transformation matrices
+function updateMatrices(vMatrix, pMatrix) {
+    gl.uniformMatrix4fv(uniformMatries.vMatrixUniform, false, vMatrix);
+    gl.uniformMatrix4fv(uniformMatries.pMatrixUniform, false, pMatrix);
+}
 
 // get the JSON file from the passed URL
 function getJSONFile(url,descr) {
@@ -51,6 +58,8 @@ function setupWebGL() {
     // Get the canvas and context
     var canvas = document.getElementById("myWebGLCanvas"); // create a js canvas
     gl = canvas.getContext("webgl"); // get a webgl object from it
+    gl.viewportWidth = canvas.width; // store width
+    gl.viewportHeight = canvas.height; // store height
     
     try {
       if (gl == null) {
@@ -71,6 +80,20 @@ function setupWebGL() {
 // read triangles in, load them into webgl buffers
 function loadTriangles() {
     var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles");
+    // inputTriangles = JSON.parse("[\n" +
+    //     "  {\n" +
+    //     "    \"material\": {\"ambient\": [0.1,0.1,0.1], \"diffuse\": [0.6,0.4,0.4], \"specular\": [0.3,0.3,0.3], \"n\":11}, \n" +
+    //     "    \"vertices\": [[0.5, 2.0, 1.0],[2.0, 0.5, 1.0],[-1.0,-1.0, 1.0]],\n" +
+    //     "    \"normals\": [[0, 0, -1],[0, 0, -1],[0, 0, -1]],\n" +
+    //     "    \"triangles\": [[0,1,2]]\n" +
+    //     "  },\n" +
+    //     "  {\n" +
+    //     "    \"material\": {\"ambient\": [0.1,0.1,0.1], \"diffuse\": [0.6,0.6,0.4], \"specular\": [0.3,0.3,0.3], \"n\":17}, \n" +
+    //     "    \"vertices\": [[0.15, 0.15, 0.75],[0.15, 0.35, 0.75],[0.35,0.35,0.75],[0.35,0.15,0.75]],\n" +
+    //     "    \"normals\": [[0, 0, -1],[0, 0, -1],[0, 0, -1],[0, 0, -1]],\n" +
+    //     "    \"triangles\": [[0,1,2],[2,3,0]]\n" +
+    //     "  }\n" +
+    //     "]");
 
     if (inputTriangles != String.null) { 
         var whichSetVert; // index of vertex in current triangle set
@@ -133,9 +156,12 @@ function setupShaders() {
     // define vertex shader in essl using es6 template strings
     var vShaderCode = `
         attribute vec3 vertexPosition;
+        
+        uniform mat4 uVMatrix;      // Viewing transformation
+        uniform mat4 uPMatrix;      // Projection transformation
 
         void main(void) {
-            gl_Position = vec4(vertexPosition, 1.0); // use the untransformed position
+            gl_Position = uPMatrix * uVMatrix * vec4(vertexPosition, 1.0); // use the untransformed position
         }
     `;
     
@@ -169,6 +195,10 @@ function setupShaders() {
                 vertexPositionAttrib = // get pointer to vertex shader input
                     gl.getAttribLocation(shaderProgram, "vertexPosition"); 
                 gl.enableVertexAttribArray(vertexPositionAttrib); // input to shader from array
+
+                // Get uniform matrices
+                uniformMatries.vMatrixUniform = gl.getUniformLocation(shaderProgram, "uVMatrix");
+                uniformMatries.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
             } // end if no shader program link errors
         } // end if no compile errors
     } // end try 
@@ -181,7 +211,19 @@ function setupShaders() {
 // render the loaded model
 function renderTriangles() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // clear frame/depth buffers
-    
+
+    var vMatrix = mat4.create();
+    var pMatrix = mat4.create();
+    var rot = mat4.create();
+    var trans = mat4.create();
+    mat4.fromRotation(rot, Math.PI, [0, 1, 0]);
+    mat4.fromTranslation(trans, [-0.5, -0.5, 0.5]);
+    // mat4.fromTranslation(trans, [0, 0, -2]);
+    mat4.multiply(vMatrix, rot, trans);
+    mat4.identity(pMatrix);
+    mat4.perspective(pMatrix, Math.PI/2, gl.viewportWidth / gl.viewportHeight, 0.5, 1.5);
+    updateMatrices(vMatrix, pMatrix);
+
     // vertex buffer: activate and feed into vertex shader
     gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffer); // activate
     gl.vertexAttribPointer(vertexPositionAttrib,3,gl.FLOAT,false,0,0); // feed
