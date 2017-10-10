@@ -15,15 +15,12 @@ var triangleBuffer; // this contains indices into vertexBuffer in triples
 var triBufferSize = 0; // the number of indices in the triangle buffer
 var vertexPositionAttrib; // where to put position for vertex shader
 
+var triangleSetArray = [];
+var ellipseSetArray = [];
+
 var uniformMatries = {};
 
 // ASSIGNMENT HELPER FUNCTIONS
-
-// update transformation matrices
-function updateMatrices(vMatrix, pMatrix) {
-    gl.uniformMatrix4fv(uniformMatries.vMatrixUniform, false, vMatrix);
-    gl.uniformMatrix4fv(uniformMatries.pMatrixUniform, false, pMatrix);
-}
 
 // get the JSON file from the passed URL
 function getJSONFile(url,descr) {
@@ -143,6 +140,75 @@ function loadTriangles() {
     } // end if triangles found
 } // end load triangles
 
+function loadTriangleSets() {
+    var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles");
+
+    if (inputTriangles != String.null) {
+        var whichSetVert; // index of vertex in current triangle set
+        var whichSetTri; // index of triangle in current triangle set
+        var coordArray = []; // 1D array of vertex coords for WebGL
+        var indexArray = []; // 1D array of vertex indices for WebGL
+        var vtxToAdd = []; // vtx coords to add to the coord array
+        var indexOffset = vec3.create(); // the index offset for the current set
+        var triToAdd = vec3.create(); // tri indices to add to the index array
+
+        for (var whichSet=0; whichSet<inputTriangles.length; whichSet++) {
+            var curSet = inputTriangles[whichSet];
+            for (whichSetTri=0; whichSetTri<curSet.triangles.length; whichSetTri++) {
+                var curTri = curSet.triangles[whichSetTri];
+                var triangleSet = {}
+                triangleSet.triBufferSize = 0;
+                triangleSet.coordArray = []; // 1D array of vertex coords for WebGL
+                triangleSet.indexArray = []; // 1D array of vertex indices for WebGL
+
+                // Calculate triangle center
+                var triCenter = vec3.create();
+                for(let i = 0; i < 3; i++) {
+                    vec3.add(triCenter, triCenter, curSet.vertices[curTri[i]])
+                }
+                vec3.scale(triCenter, triCenter, 1.0/3);
+
+                // Push vertices and triangle elements into buffer arrays
+                for (let i = 0; i < 3; i++) {
+                    vtxToAdd = vec3.subtract(vec3.create(), curSet.vertices[curTri[i]], triCenter);
+                    triangleSet.coordArray.push(vtxToAdd[0],vtxToAdd[1],vtxToAdd[2]);
+                    triangleSet.indexArray.push(triangleSet.triBufferSize++);
+                }
+
+                // send the vertex coords to webGL
+                triangleSet.vertexBuffer = gl.createBuffer(); // init empty vertex coord buffer
+                gl.bindBuffer(gl.ARRAY_BUFFER, triangleSet.vertexBuffer); // activate that buffer
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleSet.coordArray), gl.STATIC_DRAW); // coords to that buffer
+
+                // send the triangle indices to webGL
+                triangleSet.triangleBuffer = gl.createBuffer(); // init empty triangle index buffer
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleSet.triangleBuffer); // activate that buffer
+                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(triangleSet.indexArray), gl.STATIC_DRAW); // indices to that buffer
+
+                // Push triangleset into triangleSetArray
+                triangleSet.mMatrix = mat4.fromTranslation(mat4.create(), triCenter);
+                triangleSetArray.push(triangleSet);
+            } // end for triangles in set
+        } // end for each triangle set
+
+        // console.log("coordinates: "+coordArray.toString());
+        // console.log("numverts: "+vtxBufferSize);
+        // console.log("indices: "+indexArray.toString());
+        // console.log("numindices: "+triBufferSize);
+
+        // send the vertex coords to webGL
+        // vertexBuffer = gl.createBuffer(); // init empty vertex coord buffer
+        // gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffer); // activate that buffer
+        // gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(coordArray),gl.STATIC_DRAW); // coords to that buffer
+        //
+        // // send the triangle indices to webGL
+        // triangleBuffer = gl.createBuffer(); // init empty triangle index buffer
+        // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleBuffer); // activate that buffer
+        // gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indexArray),gl.STATIC_DRAW); // indices to that buffer
+
+    } // end if triangles found
+} // end load triangles
+
 // setup the webGL shaders
 function setupShaders() {
     
@@ -157,11 +223,12 @@ function setupShaders() {
     var vShaderCode = `
         attribute vec3 vertexPosition;
         
+        uniform mat4 uMMatrix;      // Projection transformation
         uniform mat4 uVMatrix;      // Viewing transformation
         uniform mat4 uPMatrix;      // Projection transformation
 
         void main(void) {
-            gl_Position = uPMatrix * uVMatrix * vec4(vertexPosition, 1.0); // use the untransformed position
+            gl_Position = uPMatrix * uVMatrix * uMMatrix * vec4(vertexPosition, 1.0); // use the untransformed position
         }
     `;
     
@@ -197,6 +264,7 @@ function setupShaders() {
                 gl.enableVertexAttribArray(vertexPositionAttrib); // input to shader from array
 
                 // Get uniform matrices
+                uniformMatries.mMatrixUniform = gl.getUniformLocation(shaderProgram, "uMMatrix");
                 uniformMatries.vMatrixUniform = gl.getUniformLocation(shaderProgram, "uVMatrix");
                 uniformMatries.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
             } // end if no shader program link errors
@@ -222,15 +290,27 @@ function renderTriangles() {
     mat4.multiply(vMatrix, rot, trans);
     mat4.identity(pMatrix);
     mat4.perspective(pMatrix, Math.PI/2, gl.viewportWidth / gl.viewportHeight, 0.5, 1.5);
-    updateMatrices(vMatrix, pMatrix);
+    gl.uniformMatrix4fv(uniformMatries.vMatrixUniform, false, vMatrix);
+    gl.uniformMatrix4fv(uniformMatries.pMatrixUniform, false, pMatrix);
+
+    for(let i = 0; i < triangleSetArray.length; i++) {
+        gl.uniformMatrix4fv(uniformMatries.mMatrixUniform, false, triangleSetArray[i].mMatrix);
+        // vertex buffer: activate and feed into vertex shader
+        gl.bindBuffer(gl.ARRAY_BUFFER, triangleSetArray[i].vertexBuffer); // activate
+        gl.vertexAttribPointer(vertexPositionAttrib,3,gl.FLOAT,false,0,0); // feed
+
+        // triangle buffer: activate and render
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleSetArray[i].triangleBuffer); // activate
+        gl.drawElements(gl.TRIANGLES, triangleSetArray[i].triBufferSize,gl.UNSIGNED_SHORT,0); // render
+    }
 
     // vertex buffer: activate and feed into vertex shader
-    gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffer); // activate
-    gl.vertexAttribPointer(vertexPositionAttrib,3,gl.FLOAT,false,0,0); // feed
-
-    // triangle buffer: activate and render
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,triangleBuffer); // activate
-    gl.drawElements(gl.TRIANGLES,triBufferSize,gl.UNSIGNED_SHORT,0); // render
+    // gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffer); // activate
+    // gl.vertexAttribPointer(vertexPositionAttrib,3,gl.FLOAT,false,0,0); // feed
+    //
+    // // triangle buffer: activate and render
+    // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,triangleBuffer); // activate
+    // gl.drawElements(gl.TRIANGLES,triBufferSize,gl.UNSIGNED_SHORT,0); // render
 } // end render triangles
 
 
@@ -239,7 +319,7 @@ function renderTriangles() {
 function main() {
   
   setupWebGL(); // set up the webGL environment
-  loadTriangles(); // load in the triangles from tri file
+  loadTriangleSets(); // load in the triangles from tri file
   setupShaders(); // setup the webGL shaders
   renderTriangles(); // draw the triangles using webGL
   
