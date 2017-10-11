@@ -18,14 +18,67 @@ var vertexPositionAttrib; // where to put position for vertex shader
 
 var vertexNormalAttrib;
 
-var triangleSetArray = [];
+var models = {};
+models.selectId = -1;
+models.array = [];
+var triangleSets = {};
+var ellipses = {};
 var lightArray = [];
 
 var camera = {};
 var uniforms = {};
 
+var currentlyPressedKeys = [];
+
 // ASSIGNMENT HELPER FUNCTIONS
 
+// set up the webGL environment
+function setupWebGL() {
+
+    // Get the canvas and context
+    var canvas = document.getElementById("myWebGLCanvas"); // create a js canvas
+    gl = canvas.getContext("webgl"); // get a webgl object from it
+    gl.viewportWidth = canvas.width; // store width
+    gl.viewportHeight = canvas.height; // store height
+
+    document.onkeydown = handleKeyDown;
+    
+    try {
+      if (gl == null) {
+        throw "unable to create gl context -- is your browser gl ready?";
+      } else {
+        gl.clearColor(0.0, 0.0, 0.0, 1.0); // use black when we clear the frame buffer
+        gl.clearDepth(1.0); // use max when we clear the depth buffer
+        gl.enable(gl.DEPTH_TEST); // use hidden surface removal (with zbuffering)
+      }
+    } // end try
+    
+    catch(e) {
+      console.log(e);
+    } // end catch
+ 
+} // end setupWebGL
+
+//region Handle events
+function handleKeyDown(event) {
+    currentlyPressedKeys[event.keyCode] = true;
+
+    if (37 == event.keyCode) {
+        // Left cursor key
+        triangleSets.selectId = (triangleSets.selectId + triangleSets.array.length - 1) % triangleSets.array.length;
+        models.selectId = triangleSets.array[triangleSets.selectId].id;
+        renderTriangles();
+    }
+    if (39 == event.keyCode) {
+        // Right cursor key
+        triangleSets.selectId = (triangleSets.selectId + 1) % triangleSets.array.length;
+        models.selectId = triangleSets.array[triangleSets.selectId].id;
+        renderTriangles();
+    }
+}
+//endregion
+
+//region Load models
 // get the JSON file from the passed URL
 function getJSONFile(url,descr) {
     try {
@@ -43,40 +96,15 @@ function getJSONFile(url,descr) {
             if ((httpReq.status !== 200) || (httpReq.readyState !== XMLHttpRequest.DONE))
                 throw "Unable to open "+descr+" file!";
             else
-                return JSON.parse(httpReq.response); 
+                return JSON.parse(httpReq.response);
         } // end if good params
-    } // end try    
-    
+    } // end try
+
     catch(e) {
         console.log(e);
         return(String.null);
     }
 } // end get json file
-
-// set up the webGL environment
-function setupWebGL() {
-
-    // Get the canvas and context
-    var canvas = document.getElementById("myWebGLCanvas"); // create a js canvas
-    gl = canvas.getContext("webgl"); // get a webgl object from it
-    gl.viewportWidth = canvas.width; // store width
-    gl.viewportHeight = canvas.height; // store height
-    
-    try {
-      if (gl == null) {
-        throw "unable to create gl context -- is your browser gl ready?";
-      } else {
-        gl.clearColor(0.0, 0.0, 0.0, 1.0); // use black when we clear the frame buffer
-        gl.clearDepth(1.0); // use max when we clear the depth buffer
-        gl.enable(gl.DEPTH_TEST); // use hidden surface removal (with zbuffering)
-      }
-    } // end try
-    
-    catch(e) {
-      console.log(e);
-    } // end catch
- 
-} // end setupWebGL
 
 // read triangles in, load them into webgl buffers
 function loadTriangles() {
@@ -146,6 +174,8 @@ function loadTriangles() {
 
 function loadTriangleSets() {
     var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles");
+    triangleSets.array = [];
+    triangleSets.selectId = 0;
 
     if (inputTriangles != String.null) {
         var whichSetTri; // index of triangle in current triangle set
@@ -201,21 +231,26 @@ function loadTriangleSets() {
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleSet.triangleBuffer); // activate that buffer
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(triangleSet.indexArray), gl.STATIC_DRAW); // indices to that buffer
 
-            // Push triangleset into triangleSetArray
+            // Push triangleset into array
             triangleSet.tMatrix = mat4.fromTranslation(mat4.create(), triCenter);
             triangleSet.rMatrix = mat4.identity(mat4.create());
-            triangleSetArray.push(triangleSet);
+            triangleSet.id = models.array.length;
+            models.array.push(triangleSet);
+            triangleSets.array.push(triangleSet);
         } // end for each triangle set
     } // end if triangles found
 } // end load triangles
 
 function loadLights() {
     lightArray = JSON.parse("[\n" +
-        "{\"x\": -1.0, \"y\": 3.0, \"z\": -0.5, \"ambient\": [0,0,1], \"diffuse\": [0,0,1], \"specular\": [0,0,1]},\n" +
-        "{\"x\": 2, \"y\": -1, \"z\": -0.5, \"ambient\": [0,1,0], \"diffuse\": [0,1,0], \"specular\": [0,1,0]}\n" +
+        "{\"x\": -1.0, \"y\": 3.0, \"z\": -0.5, \"ambient\": [1,1,1], \"diffuse\": [1,1,1], \"specular\": [1,1,1]}\n" +
+        // ",{\"x\": -1.0, \"y\": 3.0, \"z\": -0.5, \"ambient\": [0,0,1], \"diffuse\": [0,0,1], \"specular\": [0,0,1]}\n" +
+        // ",{\"x\": 2, \"y\": -1, \"z\": -0.5, \"ambient\": [0,1,0], \"diffuse\": [0,1,0], \"specular\": [0,1,0]}\n" +
         "]");
 }
+//endregion
 
+//region Manipulate uniforms
 function getLightUniformLocation(program, varName) {
     var lightUniform = {};
     lightUniform.xyz = gl.getUniformLocation(program, varName + ".xyz");
@@ -247,6 +282,7 @@ function setMaterialUniform(materialUniform, material) {
     gl.uniform3fv(materialUniform.specular, material.specular);
     gl.uniform1f(materialUniform.n, material.n);
 }
+//endregion
 
 // setup the webGL shaders
 function setupShaders() {
@@ -271,6 +307,7 @@ function setupShaders() {
         uniform light_struct uLights[N_LIGHT];
         uniform material_struct uMaterial;
         uniform vec3 uCameraPos;
+        uniform int uLightModel;
         
         varying vec3 vTransformedNormal;
         varying vec4 vPosition;
@@ -285,9 +322,15 @@ function setupShaders() {
                 rgb += uMaterial.ambient * uLights[i].ambient; // Ambient shading
                 if(dLN > 0.0) {
                     vec3 V = normalize(uCameraPos - vPosition.xyz);
-                    vec3 H = normalize(V + L);
                     rgb += dLN * (uMaterial.diffuse * uLights[i].diffuse);      // Diffuse shading
-                    rgb += pow(dot(N, H), uMaterial.n) * (uMaterial.specular * uLights[i].specular);    // Specular shading
+                    if(0 == uLightModel) {          // Phong specular shading
+                        vec3 R = normalize(2.0 * dot(N, L) * N - L);
+                        rgb += pow(dot(V, R), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
+                    }
+                    if(1 == uLightModel) {          // Blinn-Phong specular shading
+                        vec3 H = normalize(V + L);
+                        rgb += pow(dot(N, H), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
+                    }
                 }
             }
             gl_FragColor = vec4(rgb, 1); // all fragments are white
@@ -350,6 +393,7 @@ function setupShaders() {
                 gl.enableVertexAttribArray(vertexNormalAttrib); // input to shader from array
 
                 // Get uniform matrices
+                uniforms.lightModelUniform = gl.getUniformLocation(shaderProgram, "uLightModel");
                 uniforms.cameraPosUniform = gl.getUniformLocation(shaderProgram, "uCameraPos");
                 uniforms.mMatrixUniform = gl.getUniformLocation(shaderProgram, "uMMatrix");
                 uniforms.vMatrixUniform = gl.getUniformLocation(shaderProgram, "uVMatrix");
@@ -379,6 +423,7 @@ function renderTriangles() {
     var trans = mat4.fromTranslation(mat4.create(), [-camera.xyz[0], -camera.xyz[1], -camera.xyz[2]]);
     var vMatrix = mat4.multiply(mat4.create(), rot, trans);
     var pMatrix = mat4.perspective(mat4.identity(mat4.create()), Math.PI/2, gl.viewportWidth / gl.viewportHeight, 0.5, 1.5);
+    gl.uniform1i(uniforms.lightModelUniform, 0);
     gl.uniform3fv(uniforms.cameraPosUniform, camera.xyz);
     gl.uniformMatrix4fv(uniforms.vMatrixUniform, false, vMatrix);
     gl.uniformMatrix4fv(uniforms.pMatrixUniform, false, pMatrix);
@@ -390,24 +435,30 @@ function renderTriangles() {
     // mat4.fromRotation(triangleSetArray[1].rMatrix, Math.PI/4, [0,1,0]);
     // let scaleTest = 3;
     // mat4.scale(triangleSetArray[1].rMatrix, triangleSetArray[1].rMatrix, [scaleTest, scaleTest, scaleTest]);
+    var scaleMatrix = mat4.identity(mat4.create());
+    mat4.scale(scaleMatrix, scaleMatrix, [1.2, 1.2, 1.2]);
 
-    for(let i = 0; i < triangleSetArray.length; i++) {
+    for(let i = 0; i < models.array.length; i++) {
         // triangleSetArray[i].material.ambient = [0.5,1.0,1.0];
-        setMaterialUniform(uniforms.materialUniform, triangleSetArray[i].material);
-        gl.uniformMatrix4fv(uniforms.mMatrixUniform, false, mat4.multiply(mat4.create(), triangleSetArray[i].tMatrix, triangleSetArray[i].rMatrix));
-        gl.uniformMatrix3fv(uniforms.nMatrixUniform, false, mat3.fromMat4(mat3.create(), triangleSetArray[i].rMatrix));
+        setMaterialUniform(uniforms.materialUniform, models.array[i].material);
+        var mMatrix = mat4.multiply(mat4.create(), models.array[i].tMatrix, models.array[i].rMatrix);
+        if (models.selectId === i) {
+            mMatrix = mat4.multiply(mat4.create(), mMatrix, scaleMatrix);
+        }
+        gl.uniformMatrix4fv(uniforms.mMatrixUniform, false, mMatrix);
+        gl.uniformMatrix3fv(uniforms.nMatrixUniform, false, mat3.fromMat4(mat3.create(), models.array[i].rMatrix));
 
         // vertex buffer: activate and feed into vertex shader
-        gl.bindBuffer(gl.ARRAY_BUFFER, triangleSetArray[i].vertexBuffer); // activate
+        gl.bindBuffer(gl.ARRAY_BUFFER, models.array[i].vertexBuffer); // activate
         gl.vertexAttribPointer(vertexPositionAttrib,3,gl.FLOAT,false,0,0); // feed
 
         // vertex normal buffer: activate and feed into vertex shader
-        gl.bindBuffer(gl.ARRAY_BUFFER, triangleSetArray[i].normalBuffer); // activate
+        gl.bindBuffer(gl.ARRAY_BUFFER, models.array[i].normalBuffer); // activate
         gl.vertexAttribPointer(vertexNormalAttrib,3,gl.FLOAT,false,0,0); // feed
 
         // triangle buffer: activate and render
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleSetArray[i].triangleBuffer); // activate
-        gl.drawElements(gl.TRIANGLES, triangleSetArray[i].triBufferSize,gl.UNSIGNED_SHORT,0); // render
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, models.array[i].triangleBuffer); // activate
+        gl.drawElements(gl.TRIANGLES, models.array[i].triBufferSize,gl.UNSIGNED_SHORT,0); // render
     }
 } // end render triangles
 
