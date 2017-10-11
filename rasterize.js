@@ -174,7 +174,7 @@ function loadTriangleSets() {
 
             // Add normals to buffer
             for(let i = 0; i < curSet.normals.length; i++) {
-                triangleSet.normalArray.push(curSet.vertices[i][0],curSet.vertices[i][1],curSet.vertices[i][2]);
+                triangleSet.normalArray.push(curSet.normals[i][0],curSet.normals[i][1],curSet.normals[i][2]);
             }
 
             // Add triangles to buffer
@@ -210,7 +210,7 @@ function loadTriangleSets() {
 
 function loadLights() {
     lightArray = JSON.parse("[\n" +
-        "{\"x\": -1, \"y\": 3, \"z\": -0.5, \"ambient\": [1,1,1], \"diffuse\": [1,1,1], \"specular\": [1,1,1]}\n" +
+        "{\"x\": -1.0, \"y\": 3.0, \"z\": -0.5, \"ambient\": [1,1,1], \"diffuse\": [1,1,1], \"specular\": [1,1,1]}\n" +
         "]");
 }
 
@@ -269,9 +269,17 @@ function setupShaders() {
         uniform material_struct uMaterial;
         
         varying vec3 vTransformedNormal;
+        varying vec4 vPosition;
 
         void main(void) {
-            vec3 rgb = uMaterial.ambient*uLights[0].ambient;
+            vec3 rgb = vec3(0, 0, 0);
+            vec3 L = normalize(uLights[0].xyz - vPosition.xyz);
+            vec3 N = normalize(vTransformedNormal);
+            float dLN = dot(L, N);
+            rgb += uMaterial.ambient * uLights[0].ambient;
+            if(dLN > 0.0) {
+                rgb += dLN * (uMaterial.diffuse * uLights[0].diffuse);
+            }
             gl_FragColor = vec4(rgb, 1.0); // all fragments are white
         }
     `;
@@ -367,7 +375,7 @@ function renderTriangles() {
         // triangleSetArray[i].material.ambient = [0.5,1.0,1.0];
         setMaterialUniform(uniforms.materialUniform, triangleSetArray[i].material);
         gl.uniformMatrix4fv(uniforms.mMatrixUniform, false, mat4.multiply(mat4.create(), triangleSetArray[i].tMatrix, triangleSetArray[i].rMatrix));
-        gl.uniformMatrix4fv(uniforms.nMatrixUniform, false, mat3.fromMat4(mat3.create(), triangleSetArray[i].rMatrix));
+        gl.uniformMatrix3fv(uniforms.nMatrixUniform, false, mat3.fromMat4(mat3.create(), triangleSetArray[i].rMatrix));
 
         // vertex buffer: activate and feed into vertex shader
         gl.bindBuffer(gl.ARRAY_BUFFER, triangleSetArray[i].vertexBuffer); // activate
