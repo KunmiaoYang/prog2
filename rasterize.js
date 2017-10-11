@@ -21,6 +21,7 @@ var vertexNormalAttrib;
 var triangleSetArray = [];
 var lightArray = [];
 
+var camera = {};
 var uniforms = {};
 
 // ASSIGNMENT HELPER FUNCTIONS
@@ -210,7 +211,8 @@ function loadTriangleSets() {
 
 function loadLights() {
     lightArray = JSON.parse("[\n" +
-        "{\"x\": -1.0, \"y\": 3.0, \"z\": -0.5, \"ambient\": [1,1,1], \"diffuse\": [1,1,1], \"specular\": [1,1,1]}\n" +
+        "{\"x\": -1.0, \"y\": 3.0, \"z\": -0.5, \"ambient\": [0,0,1], \"diffuse\": [0,0,1], \"specular\": [0,0,1]},\n" +
+        "{\"x\": 2, \"y\": -1, \"z\": -0.5, \"ambient\": [0,1,0], \"diffuse\": [0,1,0], \"specular\": [0,1,0]}\n" +
         "]");
 }
 
@@ -251,6 +253,7 @@ function setupShaders() {
     
     // define fragment shader in essl using es6 template strings
     var fShaderCode = `
+        
         precision mediump float;
         struct light_struct {
           vec3 xyz;
@@ -265,24 +268,32 @@ function setupShaders() {
           float n;
         };
         
-        uniform light_struct uLights[1];
+        uniform light_struct uLights[N_LIGHT];
         uniform material_struct uMaterial;
+        uniform vec3 uCameraPos;
         
         varying vec3 vTransformedNormal;
         varying vec4 vPosition;
 
         void main(void) {
             vec3 rgb = vec3(0, 0, 0);
-            vec3 L = normalize(uLights[0].xyz - vPosition.xyz);
-            vec3 N = normalize(vTransformedNormal);
-            float dLN = dot(L, N);
-            rgb += uMaterial.ambient * uLights[0].ambient;
-            if(dLN > 0.0) {
-                rgb += dLN * (uMaterial.diffuse * uLights[0].diffuse);
+            
+            for(int i = 0; i < N_LIGHT; i++) {
+                vec3 L = normalize(uLights[i].xyz - vPosition.xyz);
+                vec3 N = normalize(vTransformedNormal);
+                float dLN = dot(L, N);
+                rgb += uMaterial.ambient * uLights[i].ambient; // Ambient shading
+                if(dLN > 0.0) {
+                    vec3 V = normalize(uCameraPos - vPosition.xyz);
+                    vec3 H = normalize(V + L);
+                    rgb += dLN * (uMaterial.diffuse * uLights[i].diffuse);      // Diffuse shading
+                    rgb += pow(dot(N, H), uMaterial.n) * (uMaterial.specular * uLights[i].specular);    // Specular shading
+                }
             }
-            gl_FragColor = vec4(rgb, 1.0); // all fragments are white
+            gl_FragColor = vec4(rgb, 1); // all fragments are white
         }
     `;
+    fShaderCode = "#define N_LIGHT " + lightArray.length + "\n" + fShaderCode;
     
     // define vertex shader in essl using es6 template strings
     var vShaderCode = `
@@ -339,12 +350,16 @@ function setupShaders() {
                 gl.enableVertexAttribArray(vertexNormalAttrib); // input to shader from array
 
                 // Get uniform matrices
+                uniforms.cameraPosUniform = gl.getUniformLocation(shaderProgram, "uCameraPos");
                 uniforms.mMatrixUniform = gl.getUniformLocation(shaderProgram, "uMMatrix");
                 uniforms.vMatrixUniform = gl.getUniformLocation(shaderProgram, "uVMatrix");
                 uniforms.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
                 uniforms.nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
-                uniforms.materialUniform = getMaterialUniformLocation(shaderProgram, "uMaterial")
-                uniforms.lightUniformArray = [getLightUniformLocation(shaderProgram, "uLights[0]")];
+                uniforms.materialUniform = getMaterialUniformLocation(shaderProgram, "uMaterial");
+                uniforms.lightUniformArray = [];
+                for (let i = 0; i < lightArray.length; i++) {
+                    uniforms.lightUniformArray[i] = getLightUniformLocation(shaderProgram, "uLights[" + i + "]");
+                }
             } // end if no shader program link errors
         } // end if no compile errors
     } // end try 
@@ -358,13 +373,18 @@ function setupShaders() {
 function renderTriangles() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // clear frame/depth buffers
 
+    camera.xyz = [0.5, 0.5, -0.5];
+
     var rot = mat4.fromRotation(mat4.create(), Math.PI, [0, 1, 0]);
-    var trans = mat4.fromTranslation(mat4.create(), [-0.5, -0.5, 0.5]);
+    var trans = mat4.fromTranslation(mat4.create(), [-camera.xyz[0], -camera.xyz[1], -camera.xyz[2]]);
     var vMatrix = mat4.multiply(mat4.create(), rot, trans);
     var pMatrix = mat4.perspective(mat4.identity(mat4.create()), Math.PI/2, gl.viewportWidth / gl.viewportHeight, 0.5, 1.5);
+    gl.uniform3fv(uniforms.cameraPosUniform, camera.xyz);
     gl.uniformMatrix4fv(uniforms.vMatrixUniform, false, vMatrix);
     gl.uniformMatrix4fv(uniforms.pMatrixUniform, false, pMatrix);
-    setLightUniform(uniforms.lightUniformArray[0], lightArray[0]);
+    for (let i = 0; i < lightArray.length; i++) {
+        setLightUniform(uniforms.lightUniformArray[i], lightArray[i]);
+    }
 
     // Test rMatrix
     // mat4.fromRotation(triangleSetArray[1].rMatrix, Math.PI/4, [0,1,0]);
