@@ -25,6 +25,7 @@ var triangleSets = {};
 var ellipses = {};
 var lightArray = [];
 
+var specular_model = 1;
 var camera = {};
 var uniforms = {};
 
@@ -32,7 +33,13 @@ var currentlyPressedKeys = [];
 
 // ASSIGNMENT HELPER FUNCTIONS
 
-// set up the webGL environment
+// Set up key event
+function setupKeyEvent() {
+    document.onkeydown = handleKeyDown;
+    document.onkeyup = handleKeyUp;
+}
+
+// Set up the webGL environment
 function setupWebGL() {
 
     // Get the canvas and context
@@ -41,8 +48,6 @@ function setupWebGL() {
     gl.viewportWidth = canvas.width; // store width
     gl.viewportHeight = canvas.height; // store height
 
-    document.onkeydown = handleKeyDown;
-    
     try {
       if (gl == null) {
         throw "unable to create gl context -- is your browser gl ready?";
@@ -59,26 +64,245 @@ function setupWebGL() {
  
 } // end setupWebGL
 
+// Set up the webGL shaders
+function setupShaders() {
+
+    // define fragment shader in essl using es6 template strings
+    var fShaderCode = `
+        
+        precision mediump float;
+        struct light_struct {
+          vec3 xyz;
+          vec3 ambient;
+          vec3 diffuse;
+          vec3 specular;
+        };
+        struct material_struct {
+          vec3 ambient;
+          vec3 diffuse;
+          vec3 specular;
+          float n;
+        };
+        
+        uniform light_struct uLights[N_LIGHT];
+        uniform material_struct uMaterial;
+        uniform vec3 uCameraPos;
+        uniform int uLightModel;
+        
+        varying vec3 vTransformedNormal;
+        varying vec4 vPosition;
+
+        void main(void) {
+            vec3 rgb = vec3(0, 0, 0);
+            
+            for(int i = 0; i < N_LIGHT; i++) {
+                vec3 L = normalize(uLights[i].xyz - vPosition.xyz);
+                vec3 N = normalize(vTransformedNormal);
+                float dLN = dot(L, N);
+                rgb += uMaterial.ambient * uLights[i].ambient; // Ambient shading
+                if(dLN > 0.0) {
+                    vec3 V = normalize(uCameraPos - vPosition.xyz);
+                    rgb += dLN * (uMaterial.diffuse * uLights[i].diffuse);      // Diffuse shading
+                    if(0 == uLightModel) {          // Phong specular shading
+                        vec3 R = normalize(2.0 * dot(N, L) * N - L);
+                        rgb += pow(dot(V, R), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
+                    }
+                    if(1 == uLightModel) {          // Blinn-Phong specular shading
+                        vec3 H = normalize(V + L);
+                        rgb += pow(dot(N, H), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
+                    }
+                }
+            }
+            gl_FragColor = vec4(rgb, 1); // all fragments are white
+        }
+    `;
+    fShaderCode = "#define N_LIGHT " + lightArray.length + "\n" + fShaderCode;
+
+    // define vertex shader in essl using es6 template strings
+    var vShaderCode = `
+        attribute vec3 vertexPosition;
+        attribute vec3 vertexNormal;
+
+        uniform mat4 uMMatrix;      // Model transformation
+        uniform mat4 uVMatrix;      // Viewing transformation
+        uniform mat4 uPMatrix;      // Projection transformation
+        uniform mat3 uNMatrix;      // Normal vector transformation
+        
+        varying vec3 vTransformedNormal;
+        varying vec4 vPosition;
+
+        void main(void) {
+            vPosition = uMMatrix * vec4(vertexPosition, 1.0);
+            gl_Position = uPMatrix * uVMatrix * vPosition;
+            vTransformedNormal = uNMatrix * vertexNormal;
+        }
+    `;
+
+    try {
+        // console.log("fragment shader: "+fShaderCode);
+        var fShader = gl.createShader(gl.FRAGMENT_SHADER); // create frag shader
+        gl.shaderSource(fShader,fShaderCode); // attach code to shader
+        gl.compileShader(fShader); // compile the code for gpu execution
+
+        // console.log("vertex shader: "+vShaderCode);
+        var vShader = gl.createShader(gl.VERTEX_SHADER); // create vertex shader
+        gl.shaderSource(vShader,vShaderCode); // attach code to shader
+        gl.compileShader(vShader); // compile the code for gpu execution
+
+        if (!gl.getShaderParameter(fShader, gl.COMPILE_STATUS)) { // bad frag shader compile
+            throw "error during fragment shader compile: " + gl.getShaderInfoLog(fShader);
+            gl.deleteShader(fShader);
+        } else if (!gl.getShaderParameter(vShader, gl.COMPILE_STATUS)) { // bad vertex shader compile
+            throw "error during vertex shader compile: " + gl.getShaderInfoLog(vShader);
+            gl.deleteShader(vShader);
+        } else { // no compile errors
+            shaderProgram = gl.createProgram(); // create the single shader program
+            gl.attachShader(shaderProgram, fShader); // put frag shader in program
+            gl.attachShader(shaderProgram, vShader); // put vertex shader in program
+            gl.linkProgram(shaderProgram); // link program into gl context
+
+            if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) { // bad program link
+                throw "error during shader program linking: " + gl.getProgramInfoLog(shaderProgram);
+            } else { // no shader program link errors
+                gl.useProgram(shaderProgram); // activate shader program (frag and vert)
+                vertexPositionAttrib = // get pointer to vertex shader input
+                    gl.getAttribLocation(shaderProgram, "vertexPosition");
+                gl.enableVertexAttribArray(vertexPositionAttrib); // input to shader from array
+
+                vertexNormalAttrib = gl.getAttribLocation(shaderProgram, "vertexNormal");
+                gl.enableVertexAttribArray(vertexNormalAttrib); // input to shader from array
+
+                // Get uniform matrices
+                uniforms.lightModelUniform = gl.getUniformLocation(shaderProgram, "uLightModel");
+                uniforms.cameraPosUniform = gl.getUniformLocation(shaderProgram, "uCameraPos");
+                uniforms.mMatrixUniform = gl.getUniformLocation(shaderProgram, "uMMatrix");
+                uniforms.vMatrixUniform = gl.getUniformLocation(shaderProgram, "uVMatrix");
+                uniforms.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+                uniforms.nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
+                uniforms.materialUniform = getMaterialUniformLocation(shaderProgram, "uMaterial");
+                uniforms.lightUniformArray = [];
+                for (let i = 0; i < lightArray.length; i++) {
+                    uniforms.lightUniformArray[i] = getLightUniformLocation(shaderProgram, "uLights[" + i + "]");
+                }
+            } // end if no shader program link errors
+        } // end if no compile errors
+    } // end try
+
+    catch(e) {
+        console.log(e);
+    } // end catch
+} // end setup shaders
+
 //region Handle events
 function handleKeyDown(event) {
     currentlyPressedKeys[event.keyCode] = true;
 
-    if (37 == event.keyCode) {
-        // Left cursor key
-        triangleSets.selectId = (triangleSets.selectId + triangleSets.array.length - 1) % triangleSets.array.length;
-        models.selectId = triangleSets.array[triangleSets.selectId].id;
-        renderTriangles();
+    // Part 5: Interactively select a model
+    switch(event.keyCode) {
+        case 37:    // Left cursor key
+            triangleSets.selectId = (triangleSets.selectId + triangleSets.array.length - 1) % triangleSets.array.length;
+            models.selectId = triangleSets.array[triangleSets.selectId].id;
+            renderTriangles();
+            return;
+        case 39:    // Right cursor key
+            triangleSets.selectId = (triangleSets.selectId + 1) % triangleSets.array.length;
+            models.selectId = triangleSets.array[triangleSets.selectId].id;
+            renderTriangles();
+            return;
     }
-    if (39 == event.keyCode) {
-        // Right cursor key
-        triangleSets.selectId = (triangleSets.selectId + 1) % triangleSets.array.length;
-        models.selectId = triangleSets.array[triangleSets.selectId].id;
-        renderTriangles();
+
+    // Part 6: Interactively change lighting on a model
+    // Part 7: Interactively transform models
+    if (-1 !== models.selectId) {
+        let model = models.array[models.selectId];
+        switch (event.key) {
+            case "b":    // b — toggle between Phong and Blinn-Phong lighting
+                model.specularModel = 0 === model.specularModel ? 1 : 0;
+                renderTriangles();
+                return;
+            case "n":   // n — increment the specular integer exponent by 1 (wrap from 20 to 0)
+                model.material.n = (model.material.n + 1) % 21;
+                renderTriangles();
+                return;
+            case "1":   // 1 — increase the ambient weight by 0.1 (wrap from 1 to 0)
+                for (let i = 0; i < 3; i++) {
+                    model.material.ambient[i] += 0.1;
+                    if (model.material.ambient[i] > 1) model.material.ambient[i] = 0.0;
+                }
+                renderTriangles();
+                return;
+            case "2":   // 2 — increase the diffuse weight by 0.1 (wrap from 1 to 0)
+                for (let i = 0; i < 3; i++) {
+                    model.material.diffuse[i] += 0.1;
+                    if (model.material.diffuse[i] > 1) model.material.diffuse[i] = 0.0;
+                }
+                renderTriangles();
+                return;
+            case "3":   // 3 — increase the specular weight by 0.1 (wrap from 1 to 0)
+                for (let i = 0; i < 3; i++) {
+                    model.material.specular[i] += 0.1;
+                    if (model.material.specular[i] > 1) model.material.specular[i] = 0.0;
+                }
+                renderTriangles();
+                return;
+            case "k":   // k — translate selection left along view X
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.X, -0.1));
+                renderTriangles();
+                return;
+            case ";":   // ; — translate selection right along view X
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.X, 0.1));
+                renderTriangles();
+                return;
+            case "o":   // o — translate selection forward along view Z
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Z, -0.1));
+                renderTriangles();
+                return;
+            case "l":   // l — translate selection backward along view Z
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Z, 0.1));
+                renderTriangles();
+                return;
+            case "i":   // i — translate selection up along view Y
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Y, 0.1));
+                renderTriangles();
+                return;
+            case "p":   // p — translate selection down along view Y
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Y, -0.1));
+                renderTriangles();
+                return;
+            case "K":   // K — rotate selection left around view Y (yaw)
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), -0.1, camera.Y), model.rMatrix);
+                renderTriangles();
+                return;
+            case ":":   // : — rotate selection right around view Y (yaw)
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), 0.1, camera.Y), model.rMatrix);
+                renderTriangles();
+                return;
+            case "O":   // O — rotate selection forward around view X (pitch)
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), -0.1, camera.X), model.rMatrix);
+                renderTriangles();
+                return;
+            case "L":   // L — rotate selection backward around view X (pitch)
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), 0.1, camera.X), model.rMatrix);
+                renderTriangles();
+                return;
+            case "I":   // I — rotate selection clockwise around view Z (roll)
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), -0.1, camera.Z), model.rMatrix);
+                renderTriangles();
+                return;
+            case "P":   // P — rotate selection counterclockwise around view Z (roll)
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), 0.1, camera.Z), model.rMatrix);
+                renderTriangles();
+                return;
+        }
     }
+}
+
+function handleKeyUp(event) {
+    currentlyPressedKeys[event.keyCode] = false;
 }
 //endregion
 
-//region Load models
+//region Initialize models
 // get the JSON file from the passed URL
 function getJSONFile(url,descr) {
     try {
@@ -105,6 +329,13 @@ function getJSONFile(url,descr) {
         return(String.null);
     }
 } // end get json file
+
+function initCamera() {
+    camera.xyz = vec3.fromValues(0.5, 0.5, -0.5);
+    camera.X = vec3.fromValues(-1, 0, 0);
+    camera.Y = vec3.fromValues(0, 1, 0);
+    camera.Z = vec3.fromValues(0, 0, -1);
+}
 
 // read triangles in, load them into webgl buffers
 function loadTriangles() {
@@ -185,6 +416,7 @@ function loadTriangleSets() {
             var curSet = inputTriangles[whichSet];
             var triangleSet = {};
             triangleSet.triBufferSize = 0;
+            triangleSet.specularModel = 1;
             triangleSet.material = curSet.material;
             triangleSet.coordArray = []; // 1D array of vertex coords for WebGL
             triangleSet.normalArray = []; // 1D array of vertex normals for WebGL
@@ -284,146 +516,14 @@ function setMaterialUniform(materialUniform, material) {
 }
 //endregion
 
-// setup the webGL shaders
-function setupShaders() {
-    
-    // define fragment shader in essl using es6 template strings
-    var fShaderCode = `
-        
-        precision mediump float;
-        struct light_struct {
-          vec3 xyz;
-          vec3 ambient;
-          vec3 diffuse;
-          vec3 specular;
-        };
-        struct material_struct {
-          vec3 ambient;
-          vec3 diffuse;
-          vec3 specular;
-          float n;
-        };
-        
-        uniform light_struct uLights[N_LIGHT];
-        uniform material_struct uMaterial;
-        uniform vec3 uCameraPos;
-        uniform int uLightModel;
-        
-        varying vec3 vTransformedNormal;
-        varying vec4 vPosition;
-
-        void main(void) {
-            vec3 rgb = vec3(0, 0, 0);
-            
-            for(int i = 0; i < N_LIGHT; i++) {
-                vec3 L = normalize(uLights[i].xyz - vPosition.xyz);
-                vec3 N = normalize(vTransformedNormal);
-                float dLN = dot(L, N);
-                rgb += uMaterial.ambient * uLights[i].ambient; // Ambient shading
-                if(dLN > 0.0) {
-                    vec3 V = normalize(uCameraPos - vPosition.xyz);
-                    rgb += dLN * (uMaterial.diffuse * uLights[i].diffuse);      // Diffuse shading
-                    if(0 == uLightModel) {          // Phong specular shading
-                        vec3 R = normalize(2.0 * dot(N, L) * N - L);
-                        rgb += pow(dot(V, R), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
-                    }
-                    if(1 == uLightModel) {          // Blinn-Phong specular shading
-                        vec3 H = normalize(V + L);
-                        rgb += pow(dot(N, H), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
-                    }
-                }
-            }
-            gl_FragColor = vec4(rgb, 1); // all fragments are white
-        }
-    `;
-    fShaderCode = "#define N_LIGHT " + lightArray.length + "\n" + fShaderCode;
-    
-    // define vertex shader in essl using es6 template strings
-    var vShaderCode = `
-        attribute vec3 vertexPosition;
-        attribute vec3 vertexNormal;
-
-        uniform mat4 uMMatrix;      // Model transformation
-        uniform mat4 uVMatrix;      // Viewing transformation
-        uniform mat4 uPMatrix;      // Projection transformation
-        uniform mat3 uNMatrix;      // Normal vector transformation
-        
-        varying vec3 vTransformedNormal;
-        varying vec4 vPosition;
-
-        void main(void) {
-            vPosition = uMMatrix * vec4(vertexPosition, 1.0);
-            gl_Position = uPMatrix * uVMatrix * vPosition;
-            vTransformedNormal = uNMatrix * vertexNormal;
-        }
-    `;
-    
-    try {
-        // console.log("fragment shader: "+fShaderCode);
-        var fShader = gl.createShader(gl.FRAGMENT_SHADER); // create frag shader
-        gl.shaderSource(fShader,fShaderCode); // attach code to shader
-        gl.compileShader(fShader); // compile the code for gpu execution
-
-        // console.log("vertex shader: "+vShaderCode);
-        var vShader = gl.createShader(gl.VERTEX_SHADER); // create vertex shader
-        gl.shaderSource(vShader,vShaderCode); // attach code to shader
-        gl.compileShader(vShader); // compile the code for gpu execution
-            
-        if (!gl.getShaderParameter(fShader, gl.COMPILE_STATUS)) { // bad frag shader compile
-            throw "error during fragment shader compile: " + gl.getShaderInfoLog(fShader);  
-            gl.deleteShader(fShader);
-        } else if (!gl.getShaderParameter(vShader, gl.COMPILE_STATUS)) { // bad vertex shader compile
-            throw "error during vertex shader compile: " + gl.getShaderInfoLog(vShader);  
-            gl.deleteShader(vShader);
-        } else { // no compile errors
-            shaderProgram = gl.createProgram(); // create the single shader program
-            gl.attachShader(shaderProgram, fShader); // put frag shader in program
-            gl.attachShader(shaderProgram, vShader); // put vertex shader in program
-            gl.linkProgram(shaderProgram); // link program into gl context
-
-            if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) { // bad program link
-                throw "error during shader program linking: " + gl.getProgramInfoLog(shaderProgram);
-            } else { // no shader program link errors
-                gl.useProgram(shaderProgram); // activate shader program (frag and vert)
-                vertexPositionAttrib = // get pointer to vertex shader input
-                    gl.getAttribLocation(shaderProgram, "vertexPosition");
-                gl.enableVertexAttribArray(vertexPositionAttrib); // input to shader from array
-
-                vertexNormalAttrib = gl.getAttribLocation(shaderProgram, "vertexNormal");
-                gl.enableVertexAttribArray(vertexNormalAttrib); // input to shader from array
-
-                // Get uniform matrices
-                uniforms.lightModelUniform = gl.getUniformLocation(shaderProgram, "uLightModel");
-                uniforms.cameraPosUniform = gl.getUniformLocation(shaderProgram, "uCameraPos");
-                uniforms.mMatrixUniform = gl.getUniformLocation(shaderProgram, "uMMatrix");
-                uniforms.vMatrixUniform = gl.getUniformLocation(shaderProgram, "uVMatrix");
-                uniforms.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
-                uniforms.nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
-                uniforms.materialUniform = getMaterialUniformLocation(shaderProgram, "uMaterial");
-                uniforms.lightUniformArray = [];
-                for (let i = 0; i < lightArray.length; i++) {
-                    uniforms.lightUniformArray[i] = getLightUniformLocation(shaderProgram, "uLights[" + i + "]");
-                }
-            } // end if no shader program link errors
-        } // end if no compile errors
-    } // end try 
-    
-    catch(e) {
-        console.log(e);
-    } // end catch
-} // end setup shaders
-
 // render the loaded model
 function renderTriangles() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // clear frame/depth buffers
-
-    camera.xyz = [0.5, 0.5, -0.5];
 
     var rot = mat4.fromRotation(mat4.create(), Math.PI, [0, 1, 0]);
     var trans = mat4.fromTranslation(mat4.create(), [-camera.xyz[0], -camera.xyz[1], -camera.xyz[2]]);
     var vMatrix = mat4.multiply(mat4.create(), rot, trans);
     var pMatrix = mat4.perspective(mat4.identity(mat4.create()), Math.PI/2, gl.viewportWidth / gl.viewportHeight, 0.5, 1.5);
-    gl.uniform1i(uniforms.lightModelUniform, 0);
     gl.uniform3fv(uniforms.cameraPosUniform, camera.xyz);
     gl.uniformMatrix4fv(uniforms.vMatrixUniform, false, vMatrix);
     gl.uniformMatrix4fv(uniforms.pMatrixUniform, false, pMatrix);
@@ -439,6 +539,7 @@ function renderTriangles() {
     mat4.scale(scaleMatrix, scaleMatrix, [1.2, 1.2, 1.2]);
 
     for(let i = 0; i < models.array.length; i++) {
+        gl.uniform1i(uniforms.lightModelUniform, models.array[i].specularModel);
         // triangleSetArray[i].material.ambient = [0.5,1.0,1.0];
         setMaterialUniform(uniforms.materialUniform, models.array[i].material);
         var mMatrix = mat4.multiply(mat4.create(), models.array[i].tMatrix, models.array[i].rMatrix);
@@ -468,9 +569,11 @@ function renderTriangles() {
 function main() {
 
     loadLights(); // load in the lights
+    initCamera();
     setupWebGL(); // set up the webGL environment
     loadTriangleSets(); // load in the triangles from tri file
     setupShaders(); // setup the webGL shaders
     renderTriangles(); // draw the triangles using webGL
+    setupKeyEvent();
   
 } // end main
