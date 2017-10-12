@@ -6,6 +6,8 @@ const WIN_BOTTOM = 0; const WIN_TOP = 1;  // default top and bottom y coords in 
 const INPUT_TRIANGLES_URL = "https://ncsucgclass.github.io/prog2/triangles.json"; // triangles file loc
 const INPUT_SPHERES_URL = "https://ncsucgclass.github.io/prog2/ellipsoids.json"; // ellipsoids file loc
 var Eye = new vec4.fromValues(0.5,0.5,-0.5,1.0); // default eye position in world space
+var LookAt = vec3.fromValues(0, 0, 1); // default eye look at direction in world space
+var ViewUp = vec3.fromValues(0, 1, 0); // default eye view up direction in world space
 
 /* webgl globals */
 var gl = null; // the all powerful gl object. It's all here folks!
@@ -200,14 +202,55 @@ function setupShaders() {
 function handleKeyDown(event) {
     currentlyPressedKeys[event.keyCode] = true;
 
+    // Part 4: interactively change view
     // Part 5: Interactively select a model
-    switch(event.keyCode) {
-        case 37:    // Left cursor key
+    switch(event.key) {
+        case "a":    // a — translate view left along view X
+            translateCamera(vec3.fromValues(-0.1, 0, 0));
+            renderTriangles();
+            return;
+        case "d":    // d — translate view right along view X
+            translateCamera(vec3.fromValues(0.1, 0, 0));
+            renderTriangles();
+            return;
+        case "w":    // w — translate view forward along view Z
+            translateCamera(vec3.fromValues(0, 0, -0.1));
+            renderTriangles();
+            return;
+        case "s":    // s — translate view backward along view Z
+            translateCamera(vec3.fromValues(0, 0, 0.1));
+            renderTriangles();
+            return;
+        case "q":    // q — translate view up along view Y
+            translateCamera(vec3.fromValues(0, 0.1, 0));
+            renderTriangles();
+            return;
+        case "e":    // e — translate view down along view Y
+            translateCamera(vec3.fromValues(0, -0.1, 0));
+            renderTriangles();
+            return;
+        case "A":    // A — rotate view left around view Y (yaw)
+            rotateCamera(0.1, vec3.fromValues(0, 1, 0));
+            renderTriangles();
+            return;
+        case "D":    // D — rotate view right around view Y (yaw)
+            rotateCamera(-0.1, vec3.fromValues(0, 1, 0));
+            renderTriangles();
+            return;
+        case "W":    // W — rotate view forward around view X (pitch)
+            rotateCamera(0.1, vec3.fromValues(1, 0, 0));
+            renderTriangles();
+            return;
+        case "S":    // S — rotate view backward around view X (pitch)
+            rotateCamera(-0.1, vec3.fromValues(1, 0, 0));
+            renderTriangles();
+            return;
+        case "ArrowLeft":    // Left cursor key
             triangleSets.selectId = (triangleSets.selectId + triangleSets.array.length - 1) % triangleSets.array.length;
             models.selectId = triangleSets.array[triangleSets.selectId].id;
             renderTriangles();
             return;
-        case 39:    // Right cursor key
+        case "ArrowRight":    // Right cursor key
             triangleSets.selectId = (triangleSets.selectId + 1) % triangleSets.array.length;
             models.selectId = triangleSets.array[triangleSets.selectId].id;
             renderTriangles();
@@ -333,11 +376,13 @@ function getJSONFile(url,descr) {
     }
 } // end get json file
 
-function initCamera() {
-    camera.xyz = vec3.fromValues(0.5, 0.5, -0.5);
-    camera.X = vec3.fromValues(-1, 0, 0);
-    camera.Y = vec3.fromValues(0, 1, 0);
-    camera.Z = vec3.fromValues(0, 0, -1);
+function initCamera(eye, lookAt, viewUp) {
+    camera.xyz = vec3.fromValues(eye[0], eye[1], eye[2]);
+    camera.pMatrix = mat4.perspective(mat4.identity(mat4.create()), Math.PI/2, gl.viewportWidth / gl.viewportHeight, 0.5, 1.5);
+
+    let center = vec3.fromValues(eye[0] + lookAt[0], eye[1] + lookAt[1], eye[2] + lookAt[2]);
+    camera.vMatrix = mat4.lookAt(mat4.create(), eye, center, viewUp);
+    updateCameraAxis();
 }
 
 // read triangles in, load them into webgl buffers
@@ -485,7 +530,7 @@ function loadLights() {
 }
 //endregion
 
-//region Manipulate uniforms
+//region Manipulate models
 function getLightUniformLocation(program, varName) {
     var lightUniform = {};
     lightUniform.xyz = gl.getUniformLocation(program, varName + ".xyz");
@@ -517,19 +562,33 @@ function setMaterialUniform(materialUniform, material) {
     gl.uniform3fv(materialUniform.specular, material.specular);
     gl.uniform1f(materialUniform.n, material.n);
 }
-//endregion
+
+function updateCameraAxis() {
+    camera.X = vec3.fromValues(camera.vMatrix[0], camera.vMatrix[4], camera.vMatrix[8]);
+    camera.Y = vec3.fromValues(camera.vMatrix[1], camera.vMatrix[5], camera.vMatrix[9]);
+    camera.Z = vec3.fromValues(camera.vMatrix[2], camera.vMatrix[6], camera.vMatrix[10]);
+}
+
+function rotateCamera(rad, axis) {
+    mat4.multiply(camera.vMatrix, mat4.fromRotation(mat4.create(), -rad, axis), camera.vMatrix);
+    updateCameraAxis();
+}
+
+function translateCamera(vec) {
+    for(let i = 0; i < 3; i++) {
+        camera.vMatrix[i + 12] -= vec[i];
+        camera.xyz[i] += camera.X[i] * vec[0] + camera.Y[i] * vec[1] + camera.Z[i] * vec[2];
+    }
+}
+//endregions
 
 // render the loaded model
 function renderTriangles() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // clear frame/depth buffers
 
-    var rot = mat4.fromRotation(mat4.create(), Math.PI, [0, 1, 0]);
-    var trans = mat4.fromTranslation(mat4.create(), [-camera.xyz[0], -camera.xyz[1], -camera.xyz[2]]);
-    var vMatrix = mat4.multiply(mat4.create(), rot, trans);
-    var pMatrix = mat4.perspective(mat4.identity(mat4.create()), Math.PI/2, gl.viewportWidth / gl.viewportHeight, 0.5, 1.5);
     gl.uniform3fv(uniforms.cameraPosUniform, camera.xyz);
-    gl.uniformMatrix4fv(uniforms.vMatrixUniform, false, vMatrix);
-    gl.uniformMatrix4fv(uniforms.pMatrixUniform, false, pMatrix);
+    gl.uniformMatrix4fv(uniforms.vMatrixUniform, false, camera.vMatrix);
+    gl.uniformMatrix4fv(uniforms.pMatrixUniform, false, camera.pMatrix);
     for (let i = 0; i < lightArray.length; i++) {
         setLightUniform(uniforms.lightUniformArray[i], lightArray[i]);
     }
@@ -572,8 +631,8 @@ function renderTriangles() {
 function main() {
 
     loadLights(); // load in the lights
-    initCamera();
     setupWebGL(); // set up the webGL environment
+    initCamera(Eye, LookAt, ViewUp); // Initialize camera
     loadTriangleSets(); // load in the triangles from tri file
     setupShaders(); // setup the webGL shaders
     renderTriangles(); // draw the triangles using webGL
