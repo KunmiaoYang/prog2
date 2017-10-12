@@ -376,6 +376,23 @@ function getJSONFile(url,descr) {
     }
 } // end get json file
 
+function bufferTriangleSet(triangleSet) {
+    // send the vertex coords to webGL
+    triangleSet.vertexBuffer = gl.createBuffer(); // init empty vertex coord buffer
+    gl.bindBuffer(gl.ARRAY_BUFFER, triangleSet.vertexBuffer); // activate that buffer
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleSet.coordArray), gl.STATIC_DRAW); // coords to that buffer
+
+    // send the vertex normals to webGL
+    triangleSet.normalBuffer = gl.createBuffer(); // init empty vertex coord buffer
+    gl.bindBuffer(gl.ARRAY_BUFFER, triangleSet.normalBuffer); // activate that buffer
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleSet.normalArray), gl.STATIC_DRAW); // normals to that buffer
+
+    // send the triangle indices to webGL
+    triangleSet.triangleBuffer = gl.createBuffer(); // init empty triangle index buffer
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleSet.triangleBuffer); // activate that buffer
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(triangleSet.indexArray), gl.STATIC_DRAW); // indices to that buffer
+}
+
 function initCamera(eye, lookAt, viewUp) {
     camera.xyz = vec3.fromValues(eye[0], eye[1], eye[2]);
     camera.pMatrix = mat4.perspective(mat4.identity(mat4.create()), Math.PI/2, gl.viewportWidth / gl.viewportHeight, 0.5, 1.5);
@@ -496,24 +513,14 @@ function loadTriangleSets() {
                 }
             } // end for triangles in set
 
-            // send the vertex coords to webGL
-            triangleSet.vertexBuffer = gl.createBuffer(); // init empty vertex coord buffer
-            gl.bindBuffer(gl.ARRAY_BUFFER, triangleSet.vertexBuffer); // activate that buffer
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleSet.coordArray), gl.STATIC_DRAW); // coords to that buffer
+            // Buffer data arrays into GPU
+            bufferTriangleSet(triangleSet);
 
-            // send the vertex normals to webGL
-            triangleSet.normalBuffer = gl.createBuffer(); // init empty vertex coord buffer
-            gl.bindBuffer(gl.ARRAY_BUFFER, triangleSet.normalBuffer); // activate that buffer
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleSet.normalArray), gl.STATIC_DRAW); // normals to that buffer
-
-            // send the triangle indices to webGL
-            triangleSet.triangleBuffer = gl.createBuffer(); // init empty triangle index buffer
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleSet.triangleBuffer); // activate that buffer
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(triangleSet.indexArray), gl.STATIC_DRAW); // indices to that buffer
-
-            // Push triangleset into array
+            // Initialize model transform matrices
             triangleSet.tMatrix = mat4.fromTranslation(mat4.create(), triCenter);
             triangleSet.rMatrix = mat4.identity(mat4.create());
+
+            // Push triangleset into array
             triangleSet.id = models.array.length;
             models.array.push(triangleSet);
             triangleSets.array.push(triangleSet);
@@ -568,24 +575,14 @@ function loadEllipsoids() {
                 }
             }
 
-            // send the vertex coords to webGL
-            triangleSet.vertexBuffer = gl.createBuffer(); // init empty vertex coord buffer
-            gl.bindBuffer(gl.ARRAY_BUFFER, triangleSet.vertexBuffer); // activate that buffer
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleSet.coordArray), gl.STATIC_DRAW); // coords to that buffer
+            // Buffer data arrays into GPU
+            bufferTriangleSet(triangleSet);
 
-            // send the vertex normals to webGL
-            triangleSet.normalBuffer = gl.createBuffer(); // init empty vertex coord buffer
-            gl.bindBuffer(gl.ARRAY_BUFFER, triangleSet.normalBuffer); // activate that buffer
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleSet.normalArray), gl.STATIC_DRAW); // normals to that buffer
-
-            // send the triangle indices to webGL
-            triangleSet.triangleBuffer = gl.createBuffer(); // init empty triangle index buffer
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleSet.triangleBuffer); // activate that buffer
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(triangleSet.indexArray), gl.STATIC_DRAW); // indices to that buffer
-
-            // Push triangleset into array
+            // Initialize model transform matrices
             triangleSet.tMatrix = mat4.fromTranslation(mat4.create(), triCenter);
             triangleSet.rMatrix = mat4.identity(mat4.create());
+
+            // Push triangleset into array
             triangleSet.id = models.array.length;
             models.array.push(triangleSet);
             ellipsoids.array.push(triangleSet);
