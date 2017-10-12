@@ -1,5 +1,4 @@
-/* GLOBAL CONSTANTS AND VARIABLES */
-
+//region GLOBAL CONSTANTS AND VARIABLES
 /* assignment specific globals */
 const WIN_Z = 0;  // default graphics window z coord in world space
 const WIN_LEFT = 0; const WIN_RIGHT = 1;  // default left and right x coords in world space
@@ -30,9 +29,11 @@ var camera = {};
 var uniforms = {};
 
 var currentlyPressedKeys = [];
+//endregion
 
 // ASSIGNMENT HELPER FUNCTIONS
 
+//region Set up environment
 // Set up key event
 function setupKeyEvent() {
     document.onkeydown = handleKeyDown;
@@ -97,11 +98,12 @@ function setupShaders() {
             
             for(int i = 0; i < N_LIGHT; i++) {
                 vec3 L = normalize(uLights[i].xyz - vPosition.xyz);
+                vec3 V = normalize(uCameraPos - vPosition.xyz);
                 vec3 N = normalize(vTransformedNormal);
+                if(dot(V, N) < 0.0) N = -N;
                 float dLN = dot(L, N);
                 rgb += uMaterial.ambient * uLights[i].ambient; // Ambient shading
                 if(dLN > 0.0) {
-                    vec3 V = normalize(uCameraPos - vPosition.xyz);
                     rgb += dLN * (uMaterial.diffuse * uLights[i].diffuse);      // Diffuse shading
                     if(0 == uLightModel) {          // Phong specular shading
                         vec3 R = normalize(2.0 * dot(N, L) * N - L);
@@ -192,6 +194,7 @@ function setupShaders() {
         console.log(e);
     } // end catch
 } // end setup shaders
+//endregion
 
 //region Handle events
 function handleKeyDown(event) {
