@@ -5,6 +5,7 @@ const WIN_LEFT = 0; const WIN_RIGHT = 1;  // default left and right x coords in 
 const WIN_BOTTOM = 0; const WIN_TOP = 1;  // default top and bottom y coords in world space
 const INPUT_TRIANGLES_URL = "https://ncsucgclass.github.io/prog2/triangles.json"; // triangles file loc
 const INPUT_SPHERES_URL = "https://ncsucgclass.github.io/prog2/ellipsoids.json"; // ellipsoids file loc
+
 var Eye = new vec4.fromValues(0.5,0.5,-0.5,1.0); // default eye position in world space
 var LookAt = vec3.fromValues(0, 0, 1); // default eye look at direction in world space
 var ViewUp = vec3.fromValues(0, 1, 0); // default eye view up direction in world space
@@ -16,8 +17,7 @@ var vertexBuffer; // this contains vertex coordinates in triples
 var triangleBuffer; // this contains indices into vertexBuffer in triples
 var triBufferSize = 0; // the number of indices in the triangle buffer
 var vertexPositionAttrib; // where to put position for vertex shader
-
-var vertexNormalAttrib;
+var vertexNormalAttrib; // where to put normal for vertex shader
 
 var models = {};
 models.selectId = -1;
@@ -25,6 +25,7 @@ models.array = [];
 var triangleSets = {};
 var ellipsoids = {};
 var lightArray = [];
+var useLight = true;
 
 var camera = {};
 var uniforms = {};
@@ -35,6 +36,11 @@ var currentlyPressedKeys = [];
 // ASSIGNMENT HELPER FUNCTIONS
 
 //region Set up environment
+// Load data from document
+function loadDocumentInputs() {
+    useLight = document.getElementById("UseLight").checked;
+}
+
 // Set up key event
 function setupKeyEvent() {
     document.onkeydown = handleKeyDown;
@@ -97,22 +103,25 @@ function setupShaders() {
         void main(void) {
             vec3 rgb = vec3(0, 0, 0);
             
-            for(int i = 0; i < N_LIGHT; i++) {
-                vec3 L = normalize(uLights[i].xyz - vPosition.xyz);
-                vec3 V = normalize(uCameraPos - vPosition.xyz);
-                vec3 N = normalize(vTransformedNormal);
-                if(dot(V, N) < 0.0) N = -N;
-                float dLN = dot(L, N);
-                rgb += uMaterial.ambient * uLights[i].ambient; // Ambient shading
-                if(dLN > 0.0) {
-                    rgb += dLN * (uMaterial.diffuse * uLights[i].diffuse);      // Diffuse shading
-                    if(0 == uLightModel) {          // Phong specular shading
-                        vec3 R = normalize(2.0 * dot(N, L) * N - L);
-                        rgb += pow(dot(V, R), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
-                    }
-                    if(1 == uLightModel) {          // Blinn-Phong specular shading
-                        vec3 H = normalize(V + L);
-                        rgb += pow(dot(N, H), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
+            if(uLightModel < 0) {
+                rgb = uMaterial.diffuse;
+            } else {
+                for(int i = 0; i < N_LIGHT; i++) {
+                    vec3 L = normalize(uLights[i].xyz - vPosition.xyz);
+                    vec3 V = normalize(uCameraPos - vPosition.xyz);
+                    vec3 N = normalize(vTransformedNormal);
+                    if(dot(V, N) < 0.0) N = -N;
+                    float dLN = dot(L, N);
+                    rgb += uMaterial.ambient * uLights[i].ambient; // Ambient shading
+                    if(dLN > 0.0) {
+                        rgb += dLN * (uMaterial.diffuse * uLights[i].diffuse);      // Diffuse shading
+                        if(0 == uLightModel) {          // Phong specular shading
+                            vec3 R = normalize(2.0 * dot(N, L) * N - L);
+                            rgb += pow(dot(V, R), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
+                        } else if(1 == uLightModel) {          // Blinn-Phong specular shading
+                            vec3 H = normalize(V + L);
+                            rgb += pow(dot(N, H), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
+                        }
                     }
                 }
             }
@@ -683,7 +692,10 @@ function renderTriangles() {
     mat4.scale(scaleMatrix, scaleMatrix, [1.2, 1.2, 1.2]);
 
     for(let i = 0; i < models.array.length; i++) {
-        gl.uniform1i(uniforms.lightModelUniform, models.array[i].specularModel);
+        if(useLight)
+            gl.uniform1i(uniforms.lightModelUniform, models.array[i].specularModel);
+        else
+            gl.uniform1i(uniforms.lightModelUniform, -1);
         // triangleSetArray[i].material.ambient = [0.5,1.0,1.0];
         setMaterialUniform(uniforms.materialUniform, models.array[i].material);
         var mMatrix = mat4.multiply(mat4.create(), models.array[i].tMatrix, models.array[i].rMatrix);
@@ -707,12 +719,17 @@ function renderTriangles() {
     }
 } // end render triangles
 
+function refresh() {
+    loadDocumentInputs();
+    renderTriangles();
+}
 
 /* MAIN -- HERE is where execution begins after window load */
 
 function main() {
 
     loadLights(); // load in the lights
+    loadDocumentInputs();
     setupWebGL(); // set up the webGL environment
     initCamera(Eye, LookAt, ViewUp); // Initialize camera
     loadTriangleSets(); // load in the triangles from tri file
