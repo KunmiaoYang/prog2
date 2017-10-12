@@ -26,7 +26,6 @@ var triangleSets = {};
 var ellipsoids = {};
 var lightArray = [];
 
-var specular_model = 1;
 var camera = {};
 var uniforms = {};
 
