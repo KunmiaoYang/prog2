@@ -38,7 +38,16 @@ var currentlyPressedKeys = [];
 //region Set up environment
 // Load data from document
 function loadDocumentInputs() {
+    var canvas = document.getElementById("myWebGLCanvas"); // create a js canvas
     useLight = document.getElementById("UseLight").checked;
+    canvas.width = parseInt(document.getElementById("Width").value);
+    canvas.height = parseInt(document.getElementById("Height").value);
+    camera.left = parseFloat(document.getElementById("WLeft").value);
+    camera.right = parseFloat(document.getElementById("WRight").value);
+    camera.top = parseFloat(document.getElementById("WTop").value);
+    camera.bottom = parseFloat(document.getElementById("WBottom").value);
+    camera.near = parseFloat(document.getElementById("WNear").value);
+    camera.far = parseFloat(document.getElementById("WFar").value);
 }
 
 // Set up key event
@@ -55,6 +64,7 @@ function setupWebGL() {
     gl = canvas.getContext("webgl"); // get a webgl object from it
     gl.viewportWidth = canvas.width; // store width
     gl.viewportHeight = canvas.height; // store height
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
     try {
       if (gl == null) {
@@ -417,7 +427,7 @@ function bufferTriangleSet(triangleSet) {
 
 function initCamera(eye, lookAt, viewUp) {
     camera.xyz = vec3.fromValues(eye[0], eye[1], eye[2]);
-    camera.pMatrix = mat4.perspective(mat4.identity(mat4.create()), Math.PI/2, gl.viewportWidth / gl.viewportHeight, 0.5, 1.5);
+    camera.pMatrix = calcPerspective(camera.left, camera.right, camera.top, camera.bottom, camera.near, camera.far);
 
     let center = vec3.fromValues(eye[0] + lookAt[0], eye[1] + lookAt[1], eye[2] + lookAt[2]);
     camera.vMatrix = mat4.lookAt(mat4.create(), eye, center, viewUp);
@@ -654,6 +664,29 @@ function setMaterialUniform(materialUniform, material) {
     gl.uniform1f(materialUniform.n, material.n);
 }
 
+function calcPerspective(left, right, top, bottom, near, far) {
+    let n = Math.abs(near), f = Math.abs(far);
+    let width = right - left, height = top - bottom, deep = f - n;
+    var pMatrix = mat4.create();
+    pMatrix[0] = 2*n/width;
+    pMatrix[1] = 0;
+    pMatrix[2] = 0;
+    pMatrix[3] = 0;
+    pMatrix[4] = 0;
+    pMatrix[5] = 2*n/height;
+    pMatrix[6] = 0;
+    pMatrix[7] = 0;
+    pMatrix[8] = (right + left)/width;
+    pMatrix[9] = (top + bottom)/height;
+    pMatrix[10] = -(f+n)/deep;
+    pMatrix[11] = -1;
+    pMatrix[12] = 0;
+    pMatrix[13] = 0;
+    pMatrix[14] = -2*f*n/deep;
+    pMatrix[15] = 0;
+    return pMatrix;
+}
+
 function updateCameraAxis() {
     camera.X = vec3.fromValues(camera.vMatrix[0], camera.vMatrix[4], camera.vMatrix[8]);
     camera.Y = vec3.fromValues(camera.vMatrix[1], camera.vMatrix[5], camera.vMatrix[9]);
@@ -721,6 +754,8 @@ function renderTriangles() {
 
 function refresh() {
     loadDocumentInputs();
+    setupWebGL(); // set up the webGL environment
+    camera.pMatrix = calcPerspective(camera.left, camera.right, camera.top, camera.bottom, camera.near, camera.far);
     renderTriangles();
 }
 

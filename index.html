@@ -9,12 +9,44 @@
   </head>
 
   <body onload="main();">
-    <canvas id="myWebGLCanvas" width="512" height="512"></canvas>
+    <canvas id="myWebGLCanvas" width="1024" height="1024"></canvas>
     <br>
     <table>
       <tr>
         <td></td>
         <td><input type="checkbox" id="UseLight" onchange="refresh()" checked>Use Light</td>
+        <td></td>
+        <td><button onclick="refresh()">Set Parameters</button></td>
+      </tr>
+      <tr>
+        <th>Canvas</th>
+      </tr>
+      <tr>
+        <td>Width</td>
+        <td><input type="number" id="Width" value="512"></td>
+        <td>Height</td>
+        <td><input type="number" id="Height" value="512"></td>
+      </tr>
+      <tr>
+        <th>Window</th>
+      </tr>
+      <tr>
+        <td>Left</td>
+        <td><input type="number" id="WLeft" value="-0.5"></td>
+        <td>Right</td>
+        <td><input type="number" id="WRight" value="0.5"></td>
+      </tr>
+      <tr>
+        <td>Bottom</td>
+        <td><input type="number" id="WBottom" value="-0.5"></td>
+        <td>Top</td>
+        <td><input type="number" id="WTop" value="0.5"></td>
+      </tr>
+      <tr>
+        <td>Near</td>
+        <td><input type="number" id="WNear" value="0.5"></td>
+        <td>Far</td>
+        <td><input type="number" id="WFar" value="1.5"></td>
       </tr>
     </table>
   </body>
