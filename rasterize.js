@@ -23,7 +23,7 @@ var models = {};
 models.selectId = -1;
 models.array = [];
 var triangleSets = {};
-var ellipses = {};
+var ellipsoids = {};
 var lightArray = [];
 
 var specular_model = 1;
@@ -451,6 +451,7 @@ function loadTriangles() {
     } // end if triangles found
 } // end load triangles
 
+// Read triangle sets in
 function loadTriangleSets() {
     var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles");
     triangleSets.array = [];
@@ -490,9 +491,8 @@ function loadTriangleSets() {
 
             // Add triangles to buffer
             for (whichSetTri=0; whichSetTri<curSet.triangles.length; whichSetTri++) {
-                for (let i = 0; i < 3; i++) {
+                for (let i = 0; i < 3; i++, triangleSet.triBufferSize++) {
                     triangleSet.indexArray.push(curSet.triangles[whichSetTri][i]);
-                    triangleSet.triBufferSize++;
                 }
             } // end for triangles in set
 
@@ -519,7 +519,79 @@ function loadTriangleSets() {
             triangleSets.array.push(triangleSet);
         } // end for each triangle set
     } // end if triangles found
-} // end load triangles
+} // end load triangleSets
+
+// Read ellipsoid in
+function loadEllipsoids() {
+    let nLatitude = 20;
+    let nLongitude = 40;
+    var inputEllipsoids = getJSONFile(INPUT_SPHERES_URL,"ellipsoids");
+    ellipsoids.array = [];
+    ellipsoids.selectId = 0;
+
+    if (inputEllipsoids != String.null) {
+        for (var whichSet=0; whichSet<inputEllipsoids.length; whichSet++) {
+            var curSet = inputEllipsoids[whichSet];
+            var triangleSet = {};
+            triangleSet.triBufferSize = 0;
+            triangleSet.specularModel = 1;
+            triangleSet.material = {};
+            triangleSet.material.ambient = curSet.ambient;
+            triangleSet.material.diffuse = curSet.diffuse;
+            triangleSet.material.specular = curSet.specular;
+            triangleSet.material.n = curSet.n;
+            triangleSet.coordArray = []; // 1D array of vertex coords for WebGL
+            triangleSet.normalArray = []; // 1D array of vertex normals for WebGL
+            triangleSet.indexArray = []; // 1D array of vertex indices for WebGL
+
+            // Create triangles center
+            var triCenter = vec3.fromValues(curSet.x, curSet.y, curSet.z);
+
+            // Calculate and add vertices coordinates and normals
+            let deltaLat = Math.PI / nLatitude;
+            let deltaLong = 2 * Math.PI / nLongitude;
+            for(let i = 0, theta = 0.0; i <= nLatitude; i++, theta += deltaLat) {
+                let sinT = Math.sin(theta), cosT = Math.cos(theta);
+                for(let j = 0, phi = 0.0; j <= nLongitude; j++, phi += deltaLong) {
+                    let sinP = Math.sin(phi), cosP = Math.cos(phi);
+                    let xu = cosP*sinT, yu = cosT, zu = sinP*sinT;
+                    triangleSet.coordArray.push(xu * curSet.a, yu * curSet.b, zu * curSet.c);
+                    triangleSet.normalArray.push(xu / curSet.a, yu / curSet.b, zu / curSet.c);
+                }
+            }
+
+            // Calculate and add triangles
+            for(let i = 0, up = 0, down = nLongitude + 1; i < nLatitude; i++, up = down, down += nLongitude + 1) {
+                for(let left = 0, right = 1; left < nLongitude; left++, right++, triangleSet.triBufferSize += 6) {
+                    triangleSet.indexArray.push(up + left, down + left, up + right);
+                    triangleSet.indexArray.push(down + left, down + right, up + right);
+                }
+            }
+
+            // send the vertex coords to webGL
+            triangleSet.vertexBuffer = gl.createBuffer(); // init empty vertex coord buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, triangleSet.vertexBuffer); // activate that buffer
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleSet.coordArray), gl.STATIC_DRAW); // coords to that buffer
+
+            // send the vertex normals to webGL
+            triangleSet.normalBuffer = gl.createBuffer(); // init empty vertex coord buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, triangleSet.normalBuffer); // activate that buffer
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleSet.normalArray), gl.STATIC_DRAW); // normals to that buffer
+
+            // send the triangle indices to webGL
+            triangleSet.triangleBuffer = gl.createBuffer(); // init empty triangle index buffer
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleSet.triangleBuffer); // activate that buffer
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(triangleSet.indexArray), gl.STATIC_DRAW); // indices to that buffer
+
+            // Push triangleset into array
+            triangleSet.tMatrix = mat4.fromTranslation(mat4.create(), triCenter);
+            triangleSet.rMatrix = mat4.identity(mat4.create());
+            triangleSet.id = models.array.length;
+            models.array.push(triangleSet);
+            ellipsoids.array.push(triangleSet);
+        } // end for each ellipsoid
+    } // end if ellipsoids found
+} // end load ellipsoids
 
 function loadLights() {
     lightArray = JSON.parse("[\n" +
@@ -634,6 +706,7 @@ function main() {
     setupWebGL(); // set up the webGL environment
     initCamera(Eye, LookAt, ViewUp); // Initialize camera
     loadTriangleSets(); // load in the triangles from tri file
+    loadEllipsoids(); // load in the ellipsoids from ellipsoids file
     setupShaders(); // setup the webGL shaders
     renderTriangles(); // draw the triangles using webGL
     setupKeyEvent();
