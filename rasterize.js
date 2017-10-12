@@ -245,14 +245,28 @@ function handleKeyDown(event) {
             rotateCamera(-0.1, vec3.fromValues(1, 0, 0));
             renderTriangles();
             return;
-        case "ArrowLeft":    // Left cursor key
+        case "ArrowLeft":    // left — select and highlight the previous triangle set (previous off)
             triangleSets.selectId = (triangleSets.selectId + triangleSets.array.length - 1) % triangleSets.array.length;
             models.selectId = triangleSets.array[triangleSets.selectId].id;
             renderTriangles();
             return;
-        case "ArrowRight":    // Right cursor key
+        case "ArrowRight":    // right — select and highlight the next triangle set (previous off)
             triangleSets.selectId = (triangleSets.selectId + 1) % triangleSets.array.length;
             models.selectId = triangleSets.array[triangleSets.selectId].id;
+            renderTriangles();
+            return;
+        case "ArrowUp":    // up — select and highlight the next ellipsoid (previous off)
+            ellipsoids.selectId = (ellipsoids.selectId + 1) % ellipsoids.array.length;
+            models.selectId = ellipsoids.array[ellipsoids.selectId].id;
+            renderTriangles();
+            return;
+        case "ArrowDown":    // down — select and highlight the previous ellipsoid (previous off)
+            ellipsoids.selectId = (ellipsoids.selectId + ellipsoids.array.length - 1) % ellipsoids.array.length;
+            models.selectId = ellipsoids.array[ellipsoids.selectId].id;
+            renderTriangles();
+            return;
+        case " ":    // space — deselect and turn off highlight
+            models.selectId = -1;
             renderTriangles();
             return;
     }
