@@ -127,10 +127,12 @@ function setupShaders() {
                         rgb += dLN * (uMaterial.diffuse * uLights[i].diffuse);      // Diffuse shading
                         if(0 == uLightModel) {          // Phong specular shading
                             vec3 R = normalize(2.0 * dot(N, L) * N - L);
-                            rgb += pow(dot(V, R), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
+                            float weight = pow(dot(V, R), uMaterial.n);
+                            if(weight > 0.0) rgb += weight * (uMaterial.specular * uLights[i].specular);
                         } else if(1 == uLightModel) {          // Blinn-Phong specular shading
                             vec3 H = normalize(V + L);
-                            rgb += pow(dot(N, H), uMaterial.n) * (uMaterial.specular * uLights[i].specular);
+                            float weight = pow(dot(N, H), uMaterial.n);
+                            if(weight > 0.0) rgb += weight * (uMaterial.specular * uLights[i].specular);
                         }
                     }
                 }
