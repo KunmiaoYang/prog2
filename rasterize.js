@@ -26,6 +26,7 @@ var triangleSets = {};
 var ellipsoids = {};
 var lightArray = [];
 var useLight = true;
+var lightsURL;
 
 var camera = {};
 var uniforms = {};
@@ -40,6 +41,7 @@ var currentlyPressedKeys = [];
 function loadDocumentInputs() {
     var canvas = document.getElementById("myWebGLCanvas"); // create a js canvas
     useLight = document.getElementById("UseLight").checked;
+    lightsURL = document.getElementById("LightsURL").value;
     canvas.width = parseInt(document.getElementById("Width").value);
     canvas.height = parseInt(document.getElementById("Height").value);
     camera.left = parseFloat(document.getElementById("WLeft").value);
@@ -625,11 +627,12 @@ function loadEllipsoids() {
 } // end load ellipsoids
 
 function loadLights() {
-    lightArray = JSON.parse("[\n" +
-        "{\"x\": -1.0, \"y\": 3.0, \"z\": -0.5, \"ambient\": [1,1,1], \"diffuse\": [1,1,1], \"specular\": [1,1,1]}\n" +
-        // ",{\"x\": -1.0, \"y\": 3.0, \"z\": -0.5, \"ambient\": [0,0,1], \"diffuse\": [0,0,1], \"specular\": [0,0,1]}\n" +
-        // ",{\"x\": 2, \"y\": -1, \"z\": -0.5, \"ambient\": [0,1,0], \"diffuse\": [0,1,0], \"specular\": [0,1,0]}\n" +
-        "]");
+    lightArray = getJSONFile(lightsURL, "lights");
+    // lightArray = JSON.parse("[\n" +
+    //     "{\"x\": -1.0, \"y\": 3.0, \"z\": -0.5, \"ambient\": [1,1,1], \"diffuse\": [1,1,1], \"specular\": [1,1,1]}\n" +
+    //     ",{\"x\": -1.0, \"y\": 3.0, \"z\": -0.5, \"ambient\": [0,0,1], \"diffuse\": [0,0,1], \"specular\": [0,0,1]}\n" +
+    //     ",{\"x\": 2, \"y\": -1, \"z\": -0.5, \"ambient\": [0,1,0], \"diffuse\": [0,1,0], \"specular\": [0,1,0]}\n" +
+    //     "]");
 }
 //endregion
 
@@ -756,8 +759,10 @@ function renderTriangles() {
 
 function refresh() {
     loadDocumentInputs();
+    loadLights(); // load in the lights
     setupWebGL(); // set up the webGL environment
     camera.pMatrix = calcPerspective(camera.left, camera.right, camera.top, camera.bottom, camera.near, camera.far);
+    setupShaders(); // setup the webGL shaders
     renderTriangles();
 }
 
@@ -765,8 +770,8 @@ function refresh() {
 
 function main() {
 
+    loadDocumentInputs();   // load the data from html page
     loadLights(); // load in the lights
-    loadDocumentInputs();
     setupWebGL(); // set up the webGL environment
     initCamera(Eye, LookAt, ViewUp); // Initialize camera
     loadTriangleSets(); // load in the triangles from tri file
