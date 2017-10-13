@@ -741,7 +741,7 @@ function renderTriangles() {
             mMatrix = mat4.multiply(mat4.create(), mMatrix, scaleMatrix);
         }
         gl.uniformMatrix4fv(uniforms.mMatrixUniform, false, mMatrix);
-        gl.uniformMatrix3fv(uniforms.nMatrixUniform, false, mat3.fromMat4(mat3.create(), models.array[i].rMatrix));
+        gl.uniformMatrix3fv(uniforms.nMatrixUniform, false, mat3.normalFromMat4(mat3.create(), models.array[i].rMatrix));
 
         // vertex buffer: activate and feed into vertex shader
         gl.bindBuffer(gl.ARRAY_BUFFER, models.array[i].vertexBuffer); // activate
