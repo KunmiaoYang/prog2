@@ -5,6 +5,7 @@ const WIN_LEFT = 0; const WIN_RIGHT = 1;  // default left and right x coords in 
 const WIN_BOTTOM = 0; const WIN_TOP = 1;  // default top and bottom y coords in world space
 const INPUT_TRIANGLES_URL = "https://ncsucgclass.github.io/prog2/triangles.json"; // triangles file loc
 const INPUT_SPHERES_URL = "https://ncsucgclass.github.io/prog2/ellipsoids.json"; // ellipsoids file loc
+const DELTA_TRANS = 0.0125; const DELTA_ROT = 0.02;
 
 var Eye = new vec4.fromValues(0.5,0.5,-0.5,1.0); // default eye position in world space
 var LookAt = vec3.fromValues(0, 0, 1); // default eye look at direction in world space
@@ -228,43 +229,43 @@ function handleKeyDown(event) {
     // Part 5: Interactively select a model
     switch(event.key) {
         case "a":    // a — translate view left along view X
-            translateCamera(vec3.fromValues(-0.1, 0, 0));
+            translateCamera(vec3.fromValues(-DELTA_TRANS, 0, 0));
             renderTriangles();
             return;
         case "d":    // d — translate view right along view X
-            translateCamera(vec3.fromValues(0.1, 0, 0));
+            translateCamera(vec3.fromValues(DELTA_TRANS, 0, 0));
             renderTriangles();
             return;
         case "w":    // w — translate view forward along view Z
-            translateCamera(vec3.fromValues(0, 0, -0.1));
+            translateCamera(vec3.fromValues(0, 0, -DELTA_TRANS));
             renderTriangles();
             return;
         case "s":    // s — translate view backward along view Z
-            translateCamera(vec3.fromValues(0, 0, 0.1));
+            translateCamera(vec3.fromValues(0, 0, DELTA_TRANS));
             renderTriangles();
             return;
         case "q":    // q — translate view up along view Y
-            translateCamera(vec3.fromValues(0, 0.1, 0));
+            translateCamera(vec3.fromValues(0, DELTA_TRANS, 0));
             renderTriangles();
             return;
         case "e":    // e — translate view down along view Y
-            translateCamera(vec3.fromValues(0, -0.1, 0));
+            translateCamera(vec3.fromValues(0, -DELTA_TRANS, 0));
             renderTriangles();
             return;
         case "A":    // A — rotate view left around view Y (yaw)
-            rotateCamera(0.1, vec3.fromValues(0, 1, 0));
+            rotateCamera(DELTA_ROT, vec3.fromValues(0, 1, 0));
             renderTriangles();
             return;
         case "D":    // D — rotate view right around view Y (yaw)
-            rotateCamera(-0.1, vec3.fromValues(0, 1, 0));
+            rotateCamera(-DELTA_ROT, vec3.fromValues(0, 1, 0));
             renderTriangles();
             return;
         case "W":    // W — rotate view forward around view X (pitch)
-            rotateCamera(0.1, vec3.fromValues(1, 0, 0));
+            rotateCamera(DELTA_ROT, vec3.fromValues(1, 0, 0));
             renderTriangles();
             return;
         case "S":    // S — rotate view backward around view X (pitch)
-            rotateCamera(-0.1, vec3.fromValues(1, 0, 0));
+            rotateCamera(-DELTA_ROT, vec3.fromValues(1, 0, 0));
             renderTriangles();
             return;
         case "ArrowLeft":    // left — select and highlight the previous triangle set (previous off)
@@ -328,51 +329,51 @@ function handleKeyDown(event) {
                 renderTriangles();
                 return;
             case "k":   // k — translate selection left along view X
-                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.X, -0.1));
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.X, -DELTA_TRANS));
                 renderTriangles();
                 return;
             case ";":   // ; — translate selection right along view X
-                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.X, 0.1));
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.X, DELTA_TRANS));
                 renderTriangles();
                 return;
             case "o":   // o — translate selection forward along view Z
-                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Z, -0.1));
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Z, -DELTA_TRANS));
                 renderTriangles();
                 return;
             case "l":   // l — translate selection backward along view Z
-                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Z, 0.1));
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Z, DELTA_TRANS));
                 renderTriangles();
                 return;
             case "i":   // i — translate selection up along view Y
-                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Y, 0.1));
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Y, DELTA_TRANS));
                 renderTriangles();
                 return;
             case "p":   // p — translate selection down along view Y
-                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Y, -0.1));
+                mat4.translate(model.tMatrix, model.tMatrix, vec3.scale(vec3.create(), camera.Y, -DELTA_TRANS));
                 renderTriangles();
                 return;
             case "K":   // K — rotate selection left around view Y (yaw)
-                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), -0.1, camera.Y), model.rMatrix);
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), -DELTA_ROT, camera.Y), model.rMatrix);
                 renderTriangles();
                 return;
             case ":":   // : — rotate selection right around view Y (yaw)
-                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), 0.1, camera.Y), model.rMatrix);
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), DELTA_ROT, camera.Y), model.rMatrix);
                 renderTriangles();
                 return;
             case "O":   // O — rotate selection forward around view X (pitch)
-                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), -0.1, camera.X), model.rMatrix);
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), -DELTA_ROT, camera.X), model.rMatrix);
                 renderTriangles();
                 return;
             case "L":   // L — rotate selection backward around view X (pitch)
-                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), 0.1, camera.X), model.rMatrix);
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), DELTA_ROT, camera.X), model.rMatrix);
                 renderTriangles();
                 return;
             case "I":   // I — rotate selection clockwise around view Z (roll)
-                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), -0.1, camera.Z), model.rMatrix);
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), -DELTA_ROT, camera.Z), model.rMatrix);
                 renderTriangles();
                 return;
             case "P":   // P — rotate selection counterclockwise around view Z (roll)
-                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), 0.1, camera.Z), model.rMatrix);
+                mat4.multiply(model.rMatrix, mat4.fromRotation(mat4.create(), DELTA_ROT, camera.Z), model.rMatrix);
                 renderTriangles();
                 return;
         }
