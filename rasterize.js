@@ -109,6 +109,7 @@ function setupShaders() {
         uniform material_struct uMaterial;
         uniform vec3 uCameraPos;
         uniform int uLightModel;
+        uniform bool uDoubleSide;
         
         varying vec3 vTransformedNormal;
         varying vec4 vPosition;
@@ -123,10 +124,14 @@ function setupShaders() {
                     vec3 L = normalize(uLights[i].xyz - vPosition.xyz);
                     vec3 V = normalize(uCameraPos - vPosition.xyz);
                     vec3 N = normalize(vTransformedNormal);
-                    if(dot(V, N) < 0.0) N = -N;
+                    float dVN = dot(V, N);
+                    if(uDoubleSide && dVN < 0.0) {
+                        N = -N;
+                        dVN = -dVN;
+                    }
                     float dLN = dot(L, N);
                     rgb += uMaterial.ambient * uLights[i].ambient; // Ambient shading
-                    if(dLN > 0.0) {
+                    if(dLN > 0.0 && dVN > 0.0) {
                         rgb += dLN * (uMaterial.diffuse * uLights[i].diffuse);      // Diffuse shading
                         if(0 == uLightModel) {          // Phong specular shading
                             vec3 R = normalize(2.0 * dot(N, L) * N - L);
@@ -206,6 +211,7 @@ function setupShaders() {
                 uniforms.vMatrixUniform = gl.getUniformLocation(shaderProgram, "uVMatrix");
                 uniforms.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
                 uniforms.nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
+                uniforms.doubleSideUniform = gl.getUniformLocation(shaderProgram, "uDoubleSide");
                 uniforms.materialUniform = getMaterialUniformLocation(shaderProgram, "uMaterial");
                 uniforms.lightUniformArray = [];
                 for (let i = 0; i < lightArray.length; i++) {
@@ -440,6 +446,7 @@ function initCamera(eye, lookAt, viewUp) {
 }
 
 // read triangles in, load them into webgl buffers
+// @deprecated
 function loadTriangles() {
     var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles");
     // inputTriangles = JSON.parse("[\n" +
@@ -518,6 +525,7 @@ function loadTriangleSets() {
         for (var whichSet=0; whichSet<inputTriangles.length; whichSet++) {
             var curSet = inputTriangles[whichSet];
             var triangleSet = {};
+            triangleSet.doubleSide = true;
             triangleSet.triBufferSize = 0;
             triangleSet.specularModel = 1;
             triangleSet.material = curSet.material;
@@ -577,6 +585,7 @@ function loadEllipsoids() {
         for (var whichSet=0; whichSet<inputEllipsoids.length; whichSet++) {
             var curSet = inputEllipsoids[whichSet];
             var triangleSet = {};
+            triangleSet.doubleSide = false;
             triangleSet.triBufferSize = 0;
             triangleSet.specularModel = 1;
             triangleSet.material = {};
@@ -724,6 +733,8 @@ function renderTriangles() {
     }
 
     // Test rMatrix
+    // ellipsoids.array[0].doubleSide = true;
+    // triangleSets.array[0].doubleSide = false;
     // mat4.fromRotation(triangleSetArray[1].rMatrix, Math.PI/4, [0,1,0]);
     // let scaleTest = 3;
     // mat4.scale(triangleSetArray[1].rMatrix, triangleSetArray[1].rMatrix, [scaleTest, scaleTest, scaleTest]);
@@ -736,6 +747,7 @@ function renderTriangles() {
         else
             gl.uniform1i(uniforms.lightModelUniform, -1);
         // triangleSetArray[i].material.ambient = [0.5,1.0,1.0];
+        gl.uniform1f(uniforms.doubleSideUniform, models.array[i].doubleSide);
         setMaterialUniform(uniforms.materialUniform, models.array[i].material);
         var mMatrix = mat4.multiply(mat4.create(), models.array[i].tMatrix, models.array[i].rMatrix);
         if (models.selectId === i) {
