@@ -107,12 +107,11 @@ function setupShaders() {
         
         uniform light_struct uLights[N_LIGHT];
         uniform material_struct uMaterial;
-        uniform vec3 uCameraPos;
         uniform int uLightModel;
-        uniform bool uDoubleSide;
         
         varying vec3 vTransformedNormal;
         varying vec4 vPosition;
+        varying vec3 vCameraDirection;
 
         void main(void) {
             vec3 rgb = vec3(0, 0, 0);
@@ -122,13 +121,9 @@ function setupShaders() {
             } else {
                 for(int i = 0; i < N_LIGHT; i++) {
                     vec3 L = normalize(uLights[i].xyz - vPosition.xyz);
-                    vec3 V = normalize(uCameraPos - vPosition.xyz);
+                    vec3 V = normalize(vCameraDirection);
                     vec3 N = normalize(vTransformedNormal);
                     float dVN = dot(V, N);
-                    if(uDoubleSide && dVN < 0.0) {
-                        N = -N;
-                        dVN = -dVN;
-                    }
                     float dLN = dot(L, N);
                     rgb += uMaterial.ambient * uLights[i].ambient; // Ambient shading
                     if(dLN > 0.0 && dVN > 0.0) {
@@ -159,14 +154,20 @@ function setupShaders() {
         uniform mat4 uVMatrix;      // Viewing transformation
         uniform mat4 uPMatrix;      // Projection transformation
         uniform mat3 uNMatrix;      // Normal vector transformation
+        uniform vec3 uCameraPos;    // Camera position
+        uniform bool uDoubleSide;
         
         varying vec3 vTransformedNormal;
         varying vec4 vPosition;
+        varying vec3 vCameraDirection;
 
         void main(void) {
             vPosition = uMMatrix * vec4(vertexPosition, 1.0);
+            vCameraDirection = uCameraPos - vPosition.xyz;
             gl_Position = uPMatrix * uVMatrix * vPosition;
             vTransformedNormal = uNMatrix * vertexNormal;
+            if(uDoubleSide && dot(vCameraDirection, vTransformedNormal) < 0.0)
+                vTransformedNormal = -vTransformedNormal;
         }
     `;
 
